@@ -1,11 +1,11 @@
 """
-Horse detection test — runs SuperAnimal-Quadruped inference on a video file
-with optical flow tracking between keyframes. Press Q to quit.
+Horse detection test — SuperAnimal-Quadruped inference with optical flow tracking.
+Displays body outline + full leg chain (thai → knee → paw). Press Q to quit.
 
 Usage:
     python horse_detection_test.py
-    python horse_detection_test.py horse_vidTest.mp4
-    python horse_detection_test.py horse_vidTest.mov --detector-threshold 0.7 --pose-threshold 0.1 --interval 2
+    python horse_detection_test.py 2
+    python horse_detection_test.py 3 --detector-threshold 0.4 --interval 2
 """
 
 import sys
@@ -19,13 +19,36 @@ from deeplabcut.pose_estimation_pytorch.apis import (
     get_pose_inference_runner,
     get_detector_inference_runner,
 )
+from visual_constants import (
+    VIDEO_TRANSFORMS, KP_RADIUS, TEXT_SCALE, LINE_THICKNESS,
+    INFERENCE_INTERVAL, DETECTOR_THRESHOLD, POSE_THRESHOLD, get_limb_color,
+    SHOW_BBOX, BBOX_COLOR,
+)
 
-ANIMAL_COLORS = [
-    (0,   255,   0),   # green
-    (0,   128, 255),   # orange
-    (255,  64,  64),   # blue
+# SA keypoint substrings to display (case-insensitive match against full name)
+DISPLAY_PARTS = ("nose", "throat", "withers", "tailbase", "thai", "knee", "paw")
+
+SKELETON = [
+    # Body outline
+    ("nose",              "throat_base"),
+    ("throat_base",       "back_base"),
+    ("back_base",         "back_end"),
+    ("back_end",          "tail_base"),
+    # Front legs
+    ("back_base",         "front_left_thai"),
+    ("front_left_thai",   "front_left_knee"),
+    ("front_left_knee",   "front_left_paw"),
+    ("back_base",         "front_right_thai"),
+    ("front_right_thai",  "front_right_knee"),
+    ("front_right_knee",  "front_right_paw"),
+    # Hind legs
+    ("back_end",          "back_left_thai"),
+    ("back_left_thai",    "back_left_knee"),
+    ("back_left_knee",    "back_left_paw"),
+    ("back_end",          "back_right_thai"),
+    ("back_right_thai",   "back_right_knee"),
+    ("back_right_knee",   "back_right_paw"),
 ]
-DISPLAY_PARTS = ("nose", "hoof", "paw")
 
 # --- OPTICAL FLOW ---
 LK_PARAMS = dict(
@@ -68,14 +91,10 @@ def _points_to_horses(points, meta):
 def anchor_optical_flow(horses, gray):
     global _prev_gray, _of_points, _of_meta
     _prev_gray = gray
-
-    # Build a lookup of current tracked positions by (animal_idx, name)
     prev_lookup = {}
     if _of_points is not None:
         for pt, (animal_idx, name, _) in zip(_of_points, _of_meta):
             prev_lookup[(animal_idx, name)] = pt[0]
-
-    # For uncertain keypoints, substitute the last tracked position if available
     merged = []
     for animal_idx, horse in enumerate(horses):
         merged_horse = []
@@ -86,10 +105,8 @@ def anchor_optical_flow(horses, gray):
                 prev_pos = prev_lookup.get((animal_idx, kp["name"]))
                 if prev_pos is not None:
                     merged_horse.append({**kp, "x": float(prev_pos[0]), "y": float(prev_pos[1])})
-                # else: no prior position either — skip
         if merged_horse:
             merged.append(merged_horse)
-
     _of_points, _of_meta = _horses_to_points(merged)
 
 
@@ -111,7 +128,7 @@ def track_optical_flow(gray):
 
 # --- MODEL ---
 def build_runners(detector_threshold, max_individuals, device):
-    print(f"Loading model on {device}...")
+    print(f"Loading SuperAnimal on {device}...")
     config = modelzoo.load_super_animal_config(
         super_animal="superanimal_quadruped",
         model_name="hrnet_w32",
@@ -140,19 +157,11 @@ def build_runners(detector_threshold, max_individuals, device):
         device=device,
     )
     print("Model ready.")
+    print("Bodyparts:", bodyparts)
     return pose_runner, detector_runner, bodyparts
 
 
-def run_inference(frame, pose_runner, detector_runner, bodyparts, score_threshold):
-    bbox_preds = detector_runner.inference([frame])
-    if not bbox_preds:
-        return []
-    pose_preds = pose_runner.inference([(frame, bbox_preds[0])])
-    if not pose_preds:
-        return []
-    poses = pose_preds[0].get("bodyparts", None)
-    if poses is None:
-        return []
+def _parse_poses(poses, bodyparts, score_threshold):
     horses = []
     for individual in poses:
         keypoints = []
@@ -162,35 +171,63 @@ def run_inference(frame, pose_runner, detector_runner, bodyparts, score_threshol
                 "x":       float(x),
                 "y":       float(y),
                 "score":   float(score),
-                "certain": score >= score_threshold,  # flag — False means keep old position
+                "certain": score >= score_threshold,
             })
         if any(kp["certain"] for kp in keypoints):
             horses.append(keypoints)
     return horses
 
 
+def run_inference(frame, pose_runner, detector_runner, bodyparts, score_threshold):
+    bbox_preds = detector_runner.inference([frame])
+    if not bbox_preds:
+        return [], []
+    pose_preds = pose_runner.inference([(frame, bbox_preds[0])])
+    if not pose_preds:
+        return [], []
+    poses = pose_preds[0].get("bodyparts", None)
+    if poses is None:
+        return [], []
+    raw_boxes = bbox_preds[0].get("bboxes", []) if isinstance(bbox_preds[0], dict) else []
+    bboxes = [[float(v) for v in box[:4]] for box in raw_boxes]
+    return _parse_poses(poses, bodyparts, score_threshold), bboxes
+
+
 def draw_horses(frame, horses):
-    for animal_idx, horse in enumerate(horses):
-        color = ANIMAL_COLORS[animal_idx % len(ANIMAL_COLORS)]
-        for kp in horse:
-            if not any(part in kp["name"] for part in DISPLAY_PARTS):
-                continue
+    for horse in horses:
+        visible = [kp for kp in horse if any(p in kp["name"].lower() for p in DISPLAY_PARTS)]
+        pos = {kp["name"].lower(): (int(kp["x"]), int(kp["y"])) for kp in visible}
+        for a, b in SKELETON:
+            pa = pos.get(a.lower())
+            pb = pos.get(b.lower())
+            if pa and pb:
+                cv2.line(frame, pa, pb, get_limb_color(a), LINE_THICKNESS, cv2.LINE_AA)
+        for kp in visible:
             cx, cy = int(kp["x"]), int(kp["y"])
-            cv2.circle(frame, (cx, cy), 5, color, -1)
+            color = get_limb_color(kp["name"])
+            cv2.circle(frame, (cx, cy), KP_RADIUS, color, -1)
             cv2.putText(frame, kp["name"], (cx + 6, cy - 4),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.35, color, 1, cv2.LINE_AA)
+                        cv2.FONT_HERSHEY_SIMPLEX, TEXT_SCALE, color, 1, cv2.LINE_AA)
+
+
+VIDEOS = [
+    "ref_vids/trot_side.mp4",        # 0
+    "ref_vids/canter_slomo.mp4",     # 1
+    "ref_vids/canter_graham.mov",    # 2
+    "ref_vids/short_trot_Ben.MOV",   # 3
+    "ref_vids/walk_highres.mp4",     # 4
+]
 
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("video", nargs="?", default="horse_vidTest.mov",
-                        help="Path to video file (default: horse_vidTest.mov)")
-    parser.add_argument("--detector-threshold", type=float, default=0.6,
-                        help="Confidence for animal bounding box detection (default 0.6)")
-    parser.add_argument("--pose-threshold",     type=float, default=0.5,
-                        help="Confidence for individual keypoints (default 0.2)")
-    parser.add_argument("--interval",           type=int,   default=4,
-                        help="DLC inference every N frames; optical flow in between")
+    parser = argparse.ArgumentParser(
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="\n".join(f"  {i}: {v}" for i, v in enumerate(VIDEOS)),
+    )
+    parser.add_argument("video", nargs="?", type=int, default=0)
+    parser.add_argument("--detector-threshold", type=float, default=DETECTOR_THRESHOLD)
+    parser.add_argument("--pose-threshold",     type=float, default=POSE_THRESHOLD)
+    parser.add_argument("--interval",           type=int,   default=INFERENCE_INTERVAL)
     parser.add_argument("--max-individuals",    type=int,   default=3)
     args = parser.parse_args()
 
@@ -199,25 +236,33 @@ def main():
         args.detector_threshold, args.max_individuals, device
     )
 
-    cap = cv2.VideoCapture(args.video)
+    if args.video < 0 or args.video >= len(VIDEOS):
+        print(f"Invalid video index. Choose 0–{len(VIDEOS)-1}.")
+        sys.exit(1)
+    video_path = VIDEOS[args.video]
+
+    cap = cv2.VideoCapture(video_path)
     if not cap.isOpened():
-        print(f"Could not open video: {args.video}")
+        print(f"Could not open video: {video_path}")
         sys.exit(1)
 
     w   = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     h   = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     fps = cap.get(cv2.CAP_PROP_FPS) or 30
-    print(f"Video: {args.video}  {w}x{h}  {fps:.1f}fps")
-    print(f"Inference every {args.interval} frames (detector>{args.detector_threshold}, pose>{args.pose_threshold}). Press Q to quit.")
+    print(f"Video [{args.video}]: {video_path}  {w}x{h}  {fps:.1f}fps")
+
+    transform   = VIDEO_TRANSFORMS.get(args.video, {})
+    rotate_code = transform.get("rotate", None)
+    disp_scale  = transform.get("scale", 1.0)
+    disp_w = int((h if rotate_code is not None else w) * disp_scale)
+    disp_h = int((w if rotate_code is not None else h) * disp_scale)
 
     frame_count      = 0
     horses           = []
+    bboxes           = []
     executor         = concurrent.futures.ThreadPoolExecutor(max_workers=1)
     inference_future = None
     inference_gray   = None
-
-    display_w = w // 1
-    display_h = h // 1
 
     while True:
         ret, frame = cap.read()
@@ -225,21 +270,23 @@ def main():
             cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
             continue
 
+        if rotate_code is not None:
+            frame = cv2.rotate(frame, rotate_code)
+
         frame_count += 1
         gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-        # Pick up finished inference and re-anchor optical flow
         if inference_future is not None and inference_future.done():
             try:
-                new_horses = inference_future.result()
+                new_horses, new_bboxes = inference_future.result()
                 if new_horses:
                     anchor_optical_flow(new_horses, inference_gray)
                     horses = new_horses
+                    bboxes = new_bboxes
             except Exception as e:
                 print(f"Inference error frame {frame_count}: {e}")
             inference_future = None
 
-        # Fire inference in background every interval frames
         if inference_future is None and frame_count % args.interval == 1:
             inference_gray   = gray.copy()
             inference_future = executor.submit(
@@ -249,8 +296,11 @@ def main():
             if frame_count == 1:
                 print("Waiting for initial detection...")
 
-        # Optical flow tracks every frame while inference runs in background
         horses = track_optical_flow(gray)
+
+        if SHOW_BBOX:
+            for x1, y1, x2, y2 in bboxes:
+                cv2.rectangle(frame, (int(x1), int(y1)), (int(x2), int(y2)), BBOX_COLOR, 2)
 
         draw_horses(frame, horses)
 
@@ -258,7 +308,7 @@ def main():
         cv2.putText(frame, status, (10, 24),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2, cv2.LINE_AA)
 
-        cv2.imshow("Horse Detection Test", cv2.resize(frame, (display_w, display_h)))
+        cv2.imshow("Horse Detection", cv2.resize(frame, (disp_w, disp_h)))
         if cv2.waitKey(int(1000 / fps)) & 0xFF == ord("q"):
             break
 

@@ -17,12 +17,12 @@ from deeplabcut.pose_estimation_pytorch.apis import (
 VIDEO_SOURCE      = 0
 HOST              = "localhost"
 PORT              = 8765
-SCORE_THRESHOLD   = 0.7
+SCORE_THRESHOLD   = 0.5
 MAX_INDIVIDUALS   = 3
 DEVICE            = "cuda" if torch.cuda.is_available() else "cpu"
 # Full DLC inference fires every N frames; optical flow tracks keypoints in between.
 # Lower = more accurate, slower. Higher = faster, more drift.
-KEYFRAME_INTERVAL = 4
+KEYFRAME_INTERVAL = 1
 # Substrings to match for preview labels — head landmarks and hooves/paws only.
 # All keypoints are still broadcast to TD.
 DISPLAY_PARTS     = ("nose", "hoof", "paw")
