@@ -264,8 +264,27 @@ def train():
         CONFIG_PATH,
         shuffle=shuffle_num,
         displayiters=100,
-        epochs=200,
-        gputouse=0,
+        saveiters=1000,
+        maxiters=30000,
     )
     print(f"\n=== Phase 2b done ===")
     print(f"Evaluate with: deeplabcut.evaluate_network(CONFIG_PATH, shuffle={shuffle_num})")
+
+
+if __name__ == "__main__":
+    import sys
+    cmd = sys.argv[1] if len(sys.argv) > 1 else ""
+    if cmd == "create":
+        create_project()
+    elif cmd == "import":
+        import_dlc_horse()
+    elif cmd == "dataset":
+        create_dataset()
+    elif cmd == "train":
+        train()
+    else:
+        print("Usage:")
+        print("  python horse_detection_trained.py create   — Phase 1a: create project + extract frames")
+        print("  python horse_detection_trained.py import   — Phase 1b: import DLC_Horse labels")
+        print("  python horse_detection_trained.py dataset  — Phase 2a: create training dataset")
+        print("  python horse_detection_trained.py train    — Phase 2b: train / resume")
