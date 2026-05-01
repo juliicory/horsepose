@@ -29,10 +29,10 @@ from visual_constants import (
     JOINT_PART_COLORS, SHOW_BBOX, BBOX_COLOR,
 )
 
-JOINTS_CONFIG   = r"C:\Users\julic\Documents\GitHub\horsepose\horse_joints-julic-2026-04-29\dlc-models-pytorch\iteration-0\horse_jointsApr29-trainset95shuffle5\train\pytorch_config.yaml"
-JOINTS_SNAPSHOT = r"C:\Users\julic\Documents\GitHub\horsepose\horse_joints-julic-2026-04-29\dlc-models-pytorch\iteration-0\horse_jointsApr29-trainset95shuffle5\train\snapshot-best-010.pt"
+JOINTS_CONFIG   = r"C:\Users\julic\Documents\GitHub\horsepose\horse_joints-julic-2026-04-29\dlc-models-pytorch\iteration-0\horse_jointsApr29-trainset95shuffle9\train\pytorch_config.yaml"
+JOINTS_SNAPSHOT = r"C:\Users\julic\Documents\GitHub\horsepose\horse_joints-julic-2026-04-29\dlc-models-pytorch\iteration-0\horse_jointsApr29-trainset95shuffle9\train\snapshot-best-040.pt"
 
-SHOW_SUPERANIMAL = True
+SHOW_SUPERANIMAL = False
 SHOW_JOINTS      = True
 
 JOINT_SKELETON = [

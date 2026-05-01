@@ -1,4 +1,7 @@
 {
     "python-envs.defaultEnvManager": "ms-python.python:system",
-    "python-envs.defaultPackageManager": "ms-python.python:pip"
+    "python-envs.defaultPackageManager": "ms-python.python:pip",
+    "workbench.preferredHighContrastColorTheme": "Dark 2026",
+    "workbench.preferredLightColorTheme": "Dark 2026",
+    "workbench.preferredHighContrastLightColorTheme": "Dark 2026"
 }
