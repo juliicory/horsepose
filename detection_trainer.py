@@ -283,8 +283,9 @@ def train():
         CONFIG_PATH,
         shuffle=shuffle_num,
         displayiters=100,
-        saveiters=1000,
-        maxiters=30000,
+        epochs=200,
+        gputouse=0,
+        snapshot_path=latest,
     )
     print(f"\n=== Phase 2b done ===")
     print(f"Evaluate with: deeplabcut.evaluate_network(CONFIG_PATH, shuffle={shuffle_num})")
