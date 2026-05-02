@@ -62,4 +62,4 @@ BBOX_COLOR = (255, 0, 255)
 INFERENCE_INTERVAL   = 4     # Run full inference every N frames; optical flow tracks in between
 DETECTOR_THRESHOLD   = 0.7   # Minimum detector confidence to keep a bounding box
 POSE_THRESHOLD       = 0.7   # Minimum pose keypoint confidence
-JOINTS_THRESHOLD     = 0.2   # Minimum custom joint model confidence
+JOINTS_THRESHOLD     = 0.1   # Minimum custom joint model confidence

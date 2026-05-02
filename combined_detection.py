@@ -3,9 +3,9 @@ ResNet joint detector test — SA body pose + custom joint model (hoof/fetlock/k
 Cyan overlay = custom joint model. Colored overlay = SuperAnimal. Press Q to quit.
 
 Usage:
-    python resNet_jointDetector_test.py
-    python resNet_jointDetector_test.py 3
-    python resNet_jointDetector_test.py 4 --joints-threshold 0.15
+    python combined_detection.py
+    python combined_detection.py 3
+    python combined_detection.py 4 --joints-threshold 0.15
 """
 
 import sys

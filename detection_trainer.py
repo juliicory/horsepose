@@ -1,5 +1,5 @@
 """
-horse_detection_trained.py
+detection_trainer.py
 
 Phase 1a — create_project(): create DLC project + extract frames from ref_vids (run once)
 Phase 1b — import_dlc_horse(): import DLC_Horse predictions as training labels (run once)
@@ -245,7 +245,7 @@ def create_dataset():
     m = re.search(r"shuffle(\d+)", configs[-1])
     shuffle_num = int(m.group(1)) if m else "?"
     print(f"\n=== Phase 2a done (shuffle {shuffle_num}) ===")
-    print("Now run: python horse_detection_trained.py train")
+    print("Now run: python detection_trainer.py train")
 
 
 # =============================================================================
@@ -256,7 +256,7 @@ def train():
 
     shuffle_num = _detect_448_shuffle()
     if shuffle_num is None:
-        print("No 448×448 shuffle found. Run: python horse_detection_trained.py dataset")
+        print("No 448×448 shuffle found. Run: python detection_trainer.py dataset")
         return
 
     print(f"Starting training shuffle {shuffle_num} at 448×448...")
@@ -284,7 +284,7 @@ if __name__ == "__main__":
         train()
     else:
         print("Usage:")
-        print("  python horse_detection_trained.py create   — Phase 1a: create project + extract frames")
-        print("  python horse_detection_trained.py import   — Phase 1b: import DLC_Horse labels")
-        print("  python horse_detection_trained.py dataset  — Phase 2a: create training dataset")
-        print("  python horse_detection_trained.py train    — Phase 2b: train / resume")
+        print("  python detection_trainer.py create   — Phase 1a: create project + extract frames")
+        print("  python detection_trainer.py import   — Phase 1b: import DLC_Horse labels")
+        print("  python detection_trainer.py dataset  — Phase 2a: create training dataset")
+        print("  python detection_trainer.py train    — Phase 2b: train / resume")
