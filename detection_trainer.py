@@ -256,11 +256,11 @@ def _find_latest_snapshot(shuffle_num):
     import re
     train_dir = CONFIG_PATH.replace("config.yaml", "") + \
         f"dlc-models-pytorch/iteration-0/horse_jointsApr29-trainset95shuffle{shuffle_num}/train"
-    snapshots = glob.glob(os.path.join(train_dir, "snapshot-[0-9]*.pt"))
+    snapshots = glob.glob(os.path.join(train_dir, "snapshot*.pt"))
     if not snapshots:
         return None
     # Sort by epoch number embedded in filename
-    snapshots.sort(key=lambda p: int(re.search(r"snapshot-(\d+)", p).group(1)))
+    snapshots.sort(key=lambda p: int(re.search(r"(\d+)", os.path.basename(p)).group(1)))
     return snapshots[-1]
 
 
