@@ -251,6 +251,19 @@ def create_dataset():
 # =============================================================================
 # PHASE 2b — Train / resume
 # =============================================================================
+def _find_latest_snapshot(shuffle_num):
+    import glob
+    import re
+    train_dir = CONFIG_PATH.replace("config.yaml", "") + \
+        f"dlc-models-pytorch/iteration-0/horse_jointsApr29-trainset95shuffle{shuffle_num}/train"
+    snapshots = glob.glob(os.path.join(train_dir, "snapshot-[0-9]*.pt"))
+    if not snapshots:
+        return None
+    # Sort by epoch number embedded in filename
+    snapshots.sort(key=lambda p: int(re.search(r"snapshot-(\d+)", p).group(1)))
+    return snapshots[-1]
+
+
 def train():
     import deeplabcut
 
@@ -259,7 +272,13 @@ def train():
         print("No 448×448 shuffle found. Run: python detection_trainer.py dataset")
         return
 
-    print(f"Starting training shuffle {shuffle_num} at 448×448...")
+    latest = _find_latest_snapshot(shuffle_num)
+    if latest:
+        print(f"Resuming from: {os.path.basename(latest)}")
+    else:
+        print("No existing snapshot — starting from SA pretrained weights.")
+
+    print(f"Training shuffle {shuffle_num} at 448×448...")
     deeplabcut.train_network(
         CONFIG_PATH,
         shuffle=shuffle_num,
