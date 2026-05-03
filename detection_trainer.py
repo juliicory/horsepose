@@ -240,11 +240,13 @@ def create_dataset():
     deeplabcut.create_training_dataset(
         CONFIG_PATH,
         net_type="hrnet_w32",
+        shuffle=9,
+        userfeedback=False,
     )
     configs = sorted(glob.glob(
         CONFIG_PATH.replace("config.yaml", "") +
         "dlc-models-pytorch/iteration-0/*/train/pytorch_config.yaml"
-    ))
+    ), key=lambda p: int(re.search(r"shuffle(\d+)", p).group(1)))
     m = re.search(r"shuffle(\d+)", configs[-1])
     shuffle_num = int(m.group(1)) if m else "?"
     print(f"\n=== Phase 2a done (shuffle {shuffle_num}) ===")
