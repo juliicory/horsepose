@@ -240,7 +240,7 @@ def create_dataset():
     deeplabcut.create_training_dataset(
         CONFIG_PATH,
         net_type="hrnet_w32",
-        shuffle=9,
+        Shuffles=[9],
         userfeedback=False,
     )
     configs = sorted(glob.glob(
