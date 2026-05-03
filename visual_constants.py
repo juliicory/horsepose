@@ -31,8 +31,15 @@ _NEON_BLUE = (255,  10,   0)   # back right
 
 _GREEN = (0, 255, 0)
 
+# True  = per-limb colors (magenta/orange/cyan/neon-blue)
+# False = flat color (SA → green, custom joints → magenta)
+SA_COLOR_TOGGLE    = False
+JOINT_COLOR_TOGGLE = True
+
 def get_limb_color(name):
-    """Return limb color for a keypoint name based on front/back left/right substrings."""
+    """SA keypoint color — per-limb when SA_COLOR_TOGGLE, else flat green."""
+    if not SA_COLOR_TOGGLE:
+        return _GREEN
     n = name.lower()
     if "front_left"  in n: return _MAGENTA
     if "front_right" in n: return _ORANGE
@@ -40,7 +47,7 @@ def get_limb_color(name):
     if "back_right"  in n: return _NEON_BLUE
     return _GREEN
 
-JOINT_PART_COLORS = {
+_JOINT_PART_COLORS = {
     "l_f_hoof":        _MAGENTA,
     "l_front_fetlock": _MAGENTA,
     "l_knee":          _MAGENTA,
@@ -55,11 +62,18 @@ JOINT_PART_COLORS = {
     "r_hock":          _NEON_BLUE,
 }
 
-SHOW_BBOX  = False   # Draw horse detection bounding box
+def get_joint_color(name):
+    """Custom joint model keypoint color — per-limb when JOINT_COLOR_TOGGLE, else flat magenta."""
+    if not JOINT_COLOR_TOGGLE:
+        return _MAGENTA
+    return _JOINT_PART_COLORS.get(name, _GREEN)
+
+SHOW_BBOX  = True   # Draw horse detection bounding box
 BBOX_COLOR = (255, 0, 255)
 
 # --- Inference defaults ---
-INFERENCE_INTERVAL   = 4     # Run full inference every N frames; optical flow tracks in between
-DETECTOR_THRESHOLD   = 0.7   # Minimum detector confidence to keep a bounding box
-POSE_THRESHOLD       = 0.7   # Minimum pose keypoint confidence
-JOINTS_THRESHOLD     = 0.1   # Minimum custom joint model confidence
+INFERENCE_INTERVAL   = 3     # Run full inference every N frames; optical flow tracks in between
+DETECTOR_THRESHOLD   = 0.5   # Minimum detector confidence to keep a bounding box
+POSE_THRESHOLD       = 0.5   # Minimum pose keypoint confidence
+JOINTS_THRESHOLD     = 0.01  # Minimum custom joint model confidence
+FRAME_PAD_FACTOR     = 0.4   # Fraction of bbox w/h added as padding on each side for joint crop

@@ -191,7 +191,7 @@ def import_dlc_horse():
             names=["scorer", "bodyparts", "coords"],
         )
         data = pd.DataFrame(index=index, columns=all_cols, dtype=float)
-        data.index.name = "bodyparts"
+        data.index.name = None
 
         for rel_path, row in rows:
             for (bp, coord), val in row.items():
@@ -213,10 +213,13 @@ def _detect_448_shuffle():
     import glob
     import yaml
     import re
-    configs = sorted(glob.glob(
-        CONFIG_PATH.replace("config.yaml", "") +
-        "dlc-models-pytorch/iteration-0/*/train/pytorch_config.yaml"
-    ))
+    configs = sorted(
+        glob.glob(
+            CONFIG_PATH.replace("config.yaml", "") +
+            "dlc-models-pytorch/iteration-0/*/train/pytorch_config.yaml"
+        ),
+        key=lambda p: int(re.search(r"shuffle(\d+)", p).group(1))
+    )
     for cfg_path in reversed(configs):
         with open(cfg_path) as f:
             cfg = yaml.safe_load(f)

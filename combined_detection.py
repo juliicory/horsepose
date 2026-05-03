@@ -26,14 +26,16 @@ from horse_detection_test import (
 from visual_constants import (
     VIDEO_TRANSFORMS, KP_RADIUS_JOINT, TEXT_SCALE, LINE_THICKNESS,
     INFERENCE_INTERVAL, DETECTOR_THRESHOLD, POSE_THRESHOLD, JOINTS_THRESHOLD,
-    JOINT_PART_COLORS, SHOW_BBOX, BBOX_COLOR,
+    get_joint_color, SHOW_BBOX, BBOX_COLOR, FRAME_PAD_FACTOR,
 )
 
 JOINTS_CONFIG   = r"C:\Users\julic\Documents\GitHub\horsepose\horse_joints-julic-2026-04-29\dlc-models-pytorch\iteration-0\horse_jointsApr29-trainset95shuffle9\train\pytorch_config.yaml"
-JOINTS_SNAPSHOT = r"C:\Users\julic\Documents\GitHub\horsepose\horse_joints-julic-2026-04-29\dlc-models-pytorch\iteration-0\horse_jointsApr29-trainset95shuffle9\train\snapshot-best-040.pt"
+JOINTS_SNAPSHOT = r"C:\Users\julic\Documents\GitHub\horsepose\horse_joints-julic-2026-04-29\dlc-models-pytorch\iteration-0\horse_jointsApr29-trainset95shuffle9\train\snapshot-best-180.pt"
 
-SHOW_SUPERANIMAL = False
-SHOW_JOINTS      = True
+SHOW_SUPERANIMAL  = False
+SHOW_JOINTS       = True
+DEBUG_JOINT_CROP  = True   # show padded crop fed to joint model; set False when done
+
 
 JOINT_SKELETON = [
     ("l_f_hoof", "l_front_fetlock"), ("l_front_fetlock", "l_knee"),
@@ -101,6 +103,18 @@ def build_joint_runner(max_individuals, device):
     return joints_runner, joints_bodyparts
 
 
+def _pad_box(box, frame_h, frame_w, pad_factor):
+    x1, y1, x2, y2 = float(box[0]), float(box[1]), float(box[2]), float(box[3])
+    pw = (x2 - x1) * pad_factor
+    ph = (y2 - y1) * pad_factor
+    padded = list(box)
+    padded[0] = max(0.0,          x1 - pw)
+    padded[1] = max(0.0,          y1 - ph)
+    padded[2] = min(float(frame_w), x2 + pw)
+    padded[3] = min(float(frame_h), y2 + ph)
+    return padded
+
+
 def run_inference(frame, pose_runner, detector_runner, bodyparts,
                   joints_runner, joints_bodyparts, score_threshold, joints_threshold):
     bbox_preds = detector_runner.inference([frame])
@@ -116,57 +130,51 @@ def run_inference(frame, pose_runner, detector_runner, bodyparts,
     bboxes = [[float(v) for v in box[:4]] for box in raw_boxes]
     horses = _parse_poses(poses, bodyparts, score_threshold)
 
-    JOINT_INPUT_SIZE = 448
+    fh, fw = frame.shape[:2]
     joint_horses = []
     if not SHOW_JOINTS or joints_runner is None:
         return horses, bboxes, joint_horses
-    fh, fw = frame.shape[:2]
     for box in raw_boxes:
-        x1, y1, x2, y2 = int(box[0]), int(box[1]), int(box[2]), int(box[3])
-        x1, y1 = max(0, x1), max(0, y1)
-        x2, y2 = min(fw, x2), min(fh, y2)
-        if x2 <= x1 or y2 <= y1:
-            continue
-        crop_w, crop_h = x2 - x1, y2 - y1
-        crop = cv2.resize(frame[y1:y2, x1:x2], (JOINT_INPUT_SIZE, JOINT_INPUT_SIZE))
-        scale_x = crop_w / JOINT_INPUT_SIZE
-        scale_y = crop_h / JOINT_INPUT_SIZE
+        padded_box = _pad_box(box, fh, fw, FRAME_PAD_FACTOR)
         try:
-            preds = joints_runner.inference([crop])
+            preds = joints_runner.inference([(frame, {"bboxes": [padded_box]})])
             if not preds:
                 continue
             joint_poses = preds[0].get("bodyparts", None)
-            if joint_poses is None or len(joint_poses) == 0:
+            if joint_poses is None:
                 continue
-            keypoints = []
-            for bp_idx, (px, py, score) in enumerate(joint_poses[0]):
-                keypoints.append({
-                    "name":    joints_bodyparts[bp_idx],
-                    "x":       float(x1 + px * scale_x),
-                    "y":       float(y1 + py * scale_y),
-                    "score":   float(score),
-                    "certain": score >= joints_threshold,
-                })
-            if any(kp["certain"] for kp in keypoints):
-                joint_horses.append(keypoints)
+            for individual in joint_poses:
+                keypoints = []
+                for bp_idx, kp_data in enumerate(individual):
+                    if len(kp_data) >= 3:
+                        px, py, score = float(kp_data[0]), float(kp_data[1]), float(kp_data[2])
+                    else:
+                        px, py = float(kp_data[0]), float(kp_data[1])
+                        score = 1.0
+                    keypoints.append({
+                        "name":    joints_bodyparts[bp_idx],
+                        "x":       px,
+                        "y":       py,
+                        "score":   score,
+                        "certain": score >= joints_threshold,
+                    })
+                if any(kp["certain"] for kp in keypoints):
+                    joint_horses.append(keypoints)
         except Exception as e:
             print(f"Joint inference error: {e}")
 
     return horses, bboxes, joint_horses
 
 
-_DEFAULT_JOINT_COLOR = (0, 255, 0)
-
 def draw_joints(frame, joint_horses):
     for horse in joint_horses:
-        pos = {kp["name"]: (int(kp["x"]), int(kp["y"]))
+        pos = {kp["name"]: (int(kp["x"]), int(kp["y"])) 
                for kp in horse if kp.get("certain", True)}
         for a, b in JOINT_SKELETON:
             if a in pos and b in pos:
-                color = JOINT_PART_COLORS.get(a, _DEFAULT_JOINT_COLOR)
-                cv2.line(frame, pos[a], pos[b], color, LINE_THICKNESS, cv2.LINE_AA)
+                cv2.line(frame, pos[a], pos[b], get_joint_color(a), LINE_THICKNESS, cv2.LINE_AA)
         for name, (cx, cy) in pos.items():
-            color = JOINT_PART_COLORS.get(name, _DEFAULT_JOINT_COLOR)
+            color = get_joint_color(name)
             cv2.circle(frame, (cx, cy), KP_RADIUS_JOINT, color, -1)
             cv2.putText(frame, name, (cx + 6, cy - 4),
                         cv2.FONT_HERSHEY_SIMPLEX, TEXT_SCALE, color, 1, cv2.LINE_AA)
@@ -271,6 +279,14 @@ def main():
         status = f"Frame {frame_count} | {len(horses)} horse(s) | {device.upper()}"
         cv2.putText(frame, status, (10, 24),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2, cv2.LINE_AA)
+
+        if DEBUG_JOINT_CROP and bboxes:
+            fh2, fw2 = frame.shape[:2]
+            pb = _pad_box(bboxes[0], fh2, fw2, FRAME_PAD_FACTOR)
+            x1, y1, x2, y2 = [int(v) for v in pb[:4]]
+            crop = frame[y1:y2, x1:x2]
+            if crop.size > 0:
+                cv2.imshow("Joint crop (padded 448x448)", cv2.resize(crop, (448, 448)))
 
         cv2.imshow("Joint Detector", cv2.resize(frame, (disp_w, disp_h)))
         if cv2.waitKey(int(1000 / fps)) & 0xFF == ord("q"):
