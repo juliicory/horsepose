@@ -274,6 +274,37 @@ def _detect_448_shuffle():
     return None
 
 
+def register_all_labeled_data():
+    """Add every labeled-data subfolder to config.yaml video_sets so that
+    create_training_dataset picks up all data, not just registered videos."""
+    import ruamel.yaml
+    from pathlib import Path
+
+    yaml = ruamel.yaml.YAML()
+    with open(CONFIG_PATH) as f:
+        cfg = yaml.load(f)
+
+    current_stems = {Path(k).stem for k in cfg["video_sets"].keys()}
+
+    labeled_data = Path(LABELED_DATA)
+    added = 0
+    for folder in sorted(labeled_data.iterdir()):
+        if not folder.is_dir():
+            continue
+        if not (folder / f"CollectedData_{SCORER}.h5").exists():
+            continue
+        if folder.name in current_stems:
+            continue
+        fake_path = str(Path(WORKING_DIR) / "ref_vids" / (folder.name + ".mp4"))
+        cfg["video_sets"][fake_path] = {"crop": "0, 1920, 0, 1080"}
+        current_stems.add(folder.name)
+        added += 1
+
+    with open(CONFIG_PATH, "w") as f:
+        yaml.dump(cfg, f)
+    print(f"Registered {added} new labeled-data folders in config.yaml")
+
+
 def merge_labeled_data():
     import pandas as pd
     from pathlib import Path
@@ -311,6 +342,8 @@ def create_dataset():
     import deeplabcut
     import glob
     import re
+
+    register_all_labeled_data()
 
     print("Creating training dataset (448×448, hrnet_w32 + SA init)...")
     deeplabcut.create_training_dataset(
