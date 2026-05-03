@@ -72,8 +72,8 @@ SHOW_BBOX  = True   # Draw horse detection bounding box
 BBOX_COLOR = (255, 0, 255)
 
 # --- Inference defaults ---
-INFERENCE_INTERVAL   = 3     # Run full inference every N frames; optical flow tracks in between
+INFERENCE_INTERVAL   = 2     # Run full inference every N frames; optical flow tracks in between
 DETECTOR_THRESHOLD   = 0.5   # Minimum detector confidence to keep a bounding box
 POSE_THRESHOLD       = 0.5   # Minimum pose keypoint confidence
-JOINTS_THRESHOLD     = 0.01  # Minimum custom joint model confidence
+JOINTS_THRESHOLD     = 0.08  # Minimum custom joint model confidence
 FRAME_PAD_FACTOR     = 0.4   # Fraction of bbox w/h added as padding on each side for joint crop

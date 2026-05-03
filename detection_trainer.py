@@ -71,6 +71,49 @@ def create_project():
 
 
 # =============================================================================
+# PHASE 1c — Extract frames from new videos for manual labeling
+# =============================================================================
+VIDEOS_DIR = r"C:\Users\julic\Documents\GitHub\horsepose\horse_joints-julic-2026-04-29\videos"
+VIDEO_EXTS  = {".mp4", ".mov", ".avi", ".MOV", ".MP4", ".AVI"}
+
+
+def extract_new_videos():
+    import deeplabcut
+    from pathlib import Path
+
+    labeled_data = Path(LABELED_DATA)
+
+    video_paths = []
+    for f in Path(VIDEOS_DIR).iterdir():
+        if f.suffix not in VIDEO_EXTS:
+            continue
+        if (labeled_data / f.stem).exists():
+            print(f"  Skipping {f.name} — labeled-data/{f.stem}/ already exists")
+            continue
+        video_paths.append(str(f))
+        print(f"  New: {f.name}")
+
+    if not video_paths:
+        print("No new videos to extract.")
+        return
+
+    print(f"\nRegistering {len(video_paths)} videos in config...")
+    deeplabcut.add_new_videos(CONFIG_PATH, video_paths, copy_videos=False)
+
+    print("Extracting frames (kmeans, ~1 min per video)...")
+    deeplabcut.extract_frames(
+        CONFIG_PATH,
+        mode="automatic",
+        algo="kmeans",
+        userfeedback=False,
+        videos_list=video_paths,
+    )
+
+    print("\n=== Phase 1c done ===")
+    print("Label each folder with: python julic_labeler.py <folder_name>")
+
+
+# =============================================================================
 # PHASE 1b — Import DLC_Horse predictions as training labels
 # =============================================================================
 BODYPART_MAP = {
@@ -269,6 +312,9 @@ def _find_latest_snapshot(shuffle_num):
     return snapshots[-1]
 
 
+BEST_SNAPSHOT = r"C:\Users\julic\Documents\GitHub\horsepose\horse_joints-julic-2026-04-29\dlc-models-pytorch\iteration-0\horse_jointsApr29-trainset95shuffle9\train\snapshot-best-180.pt"
+
+
 def train():
     import deeplabcut
 
@@ -290,7 +336,7 @@ def train():
         displayiters=100,
         epochs=200,
         gputouse=0,
-        snapshot_path=latest,
+        snapshot_path=BEST_SNAPSHOT,
     )
     print(f"\n=== Phase 2b done ===")
     print(f"Evaluate with: deeplabcut.evaluate_network(CONFIG_PATH, shuffle={shuffle_num})")
@@ -307,9 +353,12 @@ if __name__ == "__main__":
         create_dataset()
     elif cmd == "train":
         train()
+    elif cmd == "extract":
+        extract_new_videos()
     else:
         print("Usage:")
         print("  python detection_trainer.py create   — Phase 1a: create project + extract frames")
         print("  python detection_trainer.py import   — Phase 1b: import DLC_Horse labels")
+        print("  python detection_trainer.py extract  — Phase 1c: add + extract new videos")
         print("  python detection_trainer.py dataset  — Phase 2a: create training dataset")
         print("  python detection_trainer.py train    — Phase 2b: train / resume")
