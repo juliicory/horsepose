@@ -309,7 +309,7 @@ def register_all_labeled_data():
         if folder.name in current_stems:
             continue
         fake_path = str(Path(WORKING_DIR) / "ref_vids" / (folder.name + ".mp4"))
-        key = f'  "{fake_path}"' if " " in fake_path else f"  {fake_path}"
+        key = f"  '{fake_path}'" if " " in fake_path else f"  {fake_path}"
         new_lines.append(f"{key}:")
         new_lines.append(f"    crop: 0, 1920, 0, 1080")
         current_stems.add(folder.name)
