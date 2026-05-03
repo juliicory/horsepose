@@ -274,6 +274,39 @@ def _detect_448_shuffle():
     return None
 
 
+def merge_labeled_data():
+    import pandas as pd
+    from pathlib import Path
+
+    labeled_data = Path(LABELED_DATA)
+    h5_files = sorted(labeled_data.rglob("CollectedData_julic.h5"))
+    print(f"Merging {len(h5_files)} labeled-data folders...")
+
+    frames = []
+    for h5 in h5_files:
+        try:
+            df = pd.read_hdf(str(h5))
+            df.index.name = None
+            labeled = df[~df.isnull().all(axis=1)]
+            if len(labeled) > 0:
+                frames.append(labeled)
+        except Exception as e:
+            print(f"  WARNING: skipping {h5.parent.name}: {e}")
+
+    if not frames:
+        print("No labeled frames found.")
+        return
+
+    merged = pd.concat(frames)
+    merged = merged[~merged.index.duplicated(keep="last")]
+    merged.index.name = None
+
+    combined_dir = Path(CONFIG_PATH).parent / "training-datasets" / "iteration-0" / "UnaugmentedDataSet_horse_jointsApr29"
+    merged.to_hdf(str(combined_dir / "CollectedData_julic.h5"), key="df_with_missing", mode="w")
+    merged.to_csv(str(combined_dir / "CollectedData_julic.csv"))
+    print(f"  → {len(merged)} labeled frames from {len(frames)} folders written to combined CollectedData")
+
+
 def create_dataset():
     import deeplabcut
     import glob
@@ -292,6 +325,9 @@ def create_dataset():
     ), key=lambda p: int(re.search(r"shuffle(\d+)", p).group(1)))
     m = re.search(r"shuffle(\d+)", configs[-1])
     shuffle_num = int(m.group(1)) if m else "?"
+
+    merge_labeled_data()
+
     print(f"\n=== Phase 2a done (shuffle {shuffle_num}) ===")
     print("Now run: python detection_trainer.py train")
 
