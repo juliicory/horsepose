@@ -336,6 +336,34 @@ def register_all_labeled_data():
     print(f"Registered {added} new labeled-data folders in config.yaml")
 
 
+def filter_missing_images():
+    """Remove rows from CollectedData h5 files where the PNG no longer exists on disk."""
+    import pandas as pd
+    from pathlib import Path
+
+    project_path = Path(CONFIG_PATH).parent
+    labeled_data = Path(LABELED_DATA)
+    total_removed = 0
+
+    for h5 in sorted(labeled_data.rglob("CollectedData_julic.h5")):
+        try:
+            df = pd.read_hdf(str(h5))
+            df.index.name = None
+        except Exception as e:
+            print(f"  WARNING: could not read {h5.parent.name}: {e}")
+            continue
+
+        missing = [idx for idx in df.index
+                   if not (project_path / Path(idx.replace("\\", "/"))).exists()]
+        if missing:
+            df = df.drop(index=missing)
+            df.to_hdf(str(h5), key="df_with_missing", mode="w")
+            print(f"  {h5.parent.name}: removed {len(missing)} rows with missing images")
+            total_removed += len(missing)
+
+    print(f"filter_missing_images: {total_removed} rows removed total")
+
+
 def merge_labeled_data():
     import pandas as pd
     from pathlib import Path
@@ -375,6 +403,7 @@ def create_dataset():
     import re
 
     register_all_labeled_data()
+    filter_missing_images()
 
     print("Creating training dataset (448×448, hrnet_w32 + SA init)...")
     deeplabcut.create_training_dataset(
