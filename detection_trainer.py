@@ -276,17 +276,30 @@ def _detect_448_shuffle():
 
 def register_all_labeled_data():
     """Add every labeled-data subfolder to config.yaml video_sets so that
-    create_training_dataset picks up all data, not just registered videos."""
-    import ruamel.yaml
+    create_training_dataset picks up all data, not just registered videos.
+    Uses text-based insertion to avoid ruamel.yaml reformatting existing entries."""
+    import re
     from pathlib import Path
 
-    yaml = ruamel.yaml.YAML()
-    with open(CONFIG_PATH) as f:
-        cfg = yaml.load(f)
+    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+        content = f.read()
 
-    current_stems = {Path(k).stem for k in cfg["video_sets"].keys()}
+    # Collect stems already registered
+    current_stems = set()
+    in_vs = False
+    for line in content.splitlines():
+        if re.match(r"^video_sets\s*:", line):
+            in_vs = True
+            continue
+        if in_vs:
+            if line and not line[0].isspace():
+                break
+            m = re.match(r'^\s+"?(.+?)"?\s*:\s*$', line)
+            if m:
+                current_stems.add(Path(m.group(1)).stem)
 
     labeled_data = Path(LABELED_DATA)
+    new_lines = []
     added = 0
     for folder in sorted(labeled_data.iterdir()):
         if not folder.is_dir():
@@ -296,12 +309,30 @@ def register_all_labeled_data():
         if folder.name in current_stems:
             continue
         fake_path = str(Path(WORKING_DIR) / "ref_vids" / (folder.name + ".mp4"))
-        cfg["video_sets"][fake_path] = {"crop": "0, 1920, 0, 1080"}
+        key = f'  "{fake_path}"' if " " in fake_path else f"  {fake_path}"
+        new_lines.append(f"{key}:")
+        new_lines.append(f"    crop: 0, 1920, 0, 1080")
         current_stems.add(folder.name)
         added += 1
 
-    with open(CONFIG_PATH, "w") as f:
-        yaml.dump(cfg, f)
+    if not new_lines:
+        print("All labeled-data folders already registered.")
+        return
+
+    # Insert before the first top-level key after video_sets
+    lines = content.splitlines()
+    insert_idx = len(lines)
+    in_vs = False
+    for i, line in enumerate(lines):
+        if re.match(r"^video_sets\s*:", line):
+            in_vs = True
+        elif in_vs and line and not line[0].isspace():
+            insert_idx = i
+            break
+
+    lines[insert_idx:insert_idx] = new_lines
+    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+        f.write("\n".join(lines) + "\n")
     print(f"Registered {added} new labeled-data folders in config.yaml")
 
 
