@@ -419,8 +419,6 @@ def create_dataset():
     m = re.search(r"shuffle(\d+)", configs[-1])
     shuffle_num = int(m.group(1)) if m else "?"
 
-    merge_labeled_data()
-
     print(f"\n=== Phase 2a done (shuffle {shuffle_num}) ===")
     print("Now run: python detection_trainer.py train")
 
