@@ -312,7 +312,7 @@ def _find_latest_snapshot(shuffle_num):
     return snapshots[-1]
 
 
-BEST_SNAPSHOT = r"C:\Users\julic\Documents\GitHub\horsepose\horse_joints-julic-2026-04-29\dlc-models-pytorch\iteration-0\horse_jointsApr29-trainset95shuffle9\train\snapshot-best-180.pt"
+BEST_SNAPSHOT = r"C:\Users\julic\Documents\GitHub\horsepose\horse_joints-julic-2026-04-29\dlc-models-pytorch\iteration-0\horse_jointsApr29-trainset95shuffle9\train\snapshot-best-175.pt"
 
 
 def train():
