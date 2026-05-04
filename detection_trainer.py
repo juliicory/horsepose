@@ -497,7 +497,6 @@ def new_shuffle():
         net_type="hrnet_w32",
         Shuffles=[shuffle_num],
         userfeedback=False,
-        superanimal_name="superanimal_quadruped",
     )
 
     print(f"Training shuffle {shuffle_num} from SA pretrained weights...")
