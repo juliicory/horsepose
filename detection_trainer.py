@@ -486,20 +486,26 @@ def train():
 def new_shuffle():
     """Create the next shuffle number and train from SA pretrained weights (no resume)."""
     import deeplabcut
+    from deeplabcut.modelzoo import build_weight_init
 
     register_all_labeled_data()
     filter_missing_images()
 
     shuffle_num = _next_shuffle_num()
+    weight_init = build_weight_init(
+        cfg=CONFIG_PATH,
+        super_animal="superanimal_quadruped",
+        model_name="hrnet_w32",
+        detector_name=None,
+        with_decoder=False,
+    )
     print(f"Creating shuffle {shuffle_num} (hrnet_w32, SA init, all data)...")
     deeplabcut.create_training_dataset(
         CONFIG_PATH,
         net_type="hrnet_w32",
         Shuffles=[shuffle_num],
         userfeedback=False,
-        weight_init=deeplabcut.WeightInitialization.superanimal(
-            superanimal_name="superanimal_quadruped"
-        ),
+        weight_init=weight_init,
     )
 
     print(f"Training shuffle {shuffle_num} from SA pretrained weights...")
