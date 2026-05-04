@@ -2,11 +2,20 @@ import cv2
 
 # --- Display scale and rotation per video index ---
 VIDEO_TRANSFORMS = {
-    0: {"scale": 0.6},
-    1: {"scale": 0.6},
-    2: {"scale": 1.5},
-    3: {"rotate": cv2.ROTATE_90_CLOCKWISE, "scale": 0.6},
-    4: {"scale": 0.6},
+    0: {"scale": 0.6, "flip": 1},                                       # trot_side — horizontal flip
+    1: {"scale": 0.6},                                                   # canter_slomo
+    2: {"scale": 1.5},                                                   # canter_graham
+    3: {"rotate": cv2.ROTATE_90_CLOCKWISE, "max_size": (540, 960)},     # short_trot_Ben — portrait, constrained
+    4: {"scale": 0.6},                                                   # walk_highres
+    5: {"scale": 0.6},                                                   # austin_trot_left
+    6: {"rotate": cv2.ROTATE_90_CLOCKWISE, "max_size": (540, 960)},     # ben_canter — portrait, constrained
+    7: {"rotate": cv2.ROTATE_180, "scale": 0.6, "flip": 1},                        # blue_canter — 180°
+    8: {"scale": 0.6},                                                   # blue_canter_trot
+    9: {"scale": 0.6},                                                   # horse_vid1
+   10: {"scale": 0.6},                                                   # horse_vid2
+   11: {"scale": 0.2},                                                   # horse_vid3
+   12: {"scale": 0.6},                                                   # horse_vid4
+   13: {"scale": 0.6, "flip": 1},                                                   # horse_vid5
 }
 
 # --- Keypoint marker sizes ---
@@ -34,7 +43,7 @@ _GREEN = (0, 255, 0)
 # True  = per-limb colors (magenta/orange/cyan/neon-blue)
 # False = flat color (SA → green, custom joints → magenta)
 SA_COLOR_TOGGLE    = False
-JOINT_COLOR_TOGGLE = True
+JOINT_COLOR_TOGGLE = False
 
 def get_limb_color(name):
     """SA keypoint color — per-limb when SA_COLOR_TOGGLE, else flat green."""
@@ -68,12 +77,26 @@ def get_joint_color(name):
         return _MAGENTA
     return _JOINT_PART_COLORS.get(name, _GREEN)
 
+# --- Custom joint model visibility toggles (one per group, covers all four limbs) ---
+SHOW_JOINT_HOOVES   = True   # l_f_hoof, r_f_hoof, l_b_hoof, r_b_hoof
+SHOW_JOINT_FETLOCKS = True   # l_front_fetlock, r_front_fetlock, l_hind_fetlock, r_hind_fetlock
+SHOW_JOINT_KNEES    = False   # l_knee, r_knee, l_hock, r_hock
+SHOW_JOINT_SKELETON = False  # skeleton lines between joint model keypoints
+
+# --- SuperAnimal visibility toggles (one per group) ---
+SHOW_SA_BODY     = False   # nose, throat_base, back_base, back_end, tail_base
+SHOW_SA_THAIS    = False   # *_thai (upper leg)
+SHOW_SA_KNEES    = False   # *_knee
+SHOW_SA_PAWS     = True   # *_paw
+SHOW_SA_FETLOCKS = False  # fetlock points from custom model, inserted between knee and paw
+SHOW_SA_SKELETON = False  # skeleton lines between SA keypoints
+
 SHOW_BBOX  = True   # Draw horse detection bounding box
 BBOX_COLOR = (255, 0, 255)
 
 # --- Inference defaults ---
-INFERENCE_INTERVAL   = 2     # Run full inference every N frames; optical flow tracks in between
+INFERENCE_INTERVAL   = 3     # Run full inference every N frames; optical flow tracks in between
 DETECTOR_THRESHOLD   = 0.5   # Minimum detector confidence to keep a bounding box
-POSE_THRESHOLD       = 0.5   # Minimum pose keypoint confidence
-JOINTS_THRESHOLD     = 0.08  # Minimum custom joint model confidence
-FRAME_PAD_FACTOR     = 0.4   # Fraction of bbox w/h added as padding on each side for joint crop
+POSE_THRESHOLD       = 0.6   # Minimum pose keypoint confidence
+JOINTS_THRESHOLD     = 0.4  # Minimum custom joint model confidence
+FRAME_PAD_FACTOR     = 0.6   # Fraction of bbox w/h added as padding on each side for joint crop

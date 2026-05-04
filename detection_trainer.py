@@ -434,9 +434,20 @@ def _find_latest_snapshot(shuffle_num):
     snapshots = glob.glob(os.path.join(train_dir, "snapshot*.pt"))
     if not snapshots:
         return None
-    # Sort by epoch number embedded in filename
     snapshots.sort(key=lambda p: int(re.search(r"(\d+)", os.path.basename(p)).group(1)))
     return snapshots[-1]
+
+
+def _next_shuffle_num():
+    import glob
+    import re
+    existing = glob.glob(
+        CONFIG_PATH.replace("config.yaml", "") +
+        "dlc-models-pytorch/iteration-0/*/train/pytorch_config.yaml"
+    )
+    nums = [int(m.group(1)) for p in existing
+            if (m := re.search(r"shuffle(\d+)", p))]
+    return max(nums) + 1 if nums else 1
 
 
 BEST_SNAPSHOT = r"C:\Users\julic\Documents\GitHub\horsepose\horse_joints-julic-2026-04-29\dlc-models-pytorch\iteration-0\horse_jointsApr29-trainset95shuffle9\train\snapshot-175.pt"
@@ -469,6 +480,37 @@ def train():
     print(f"Evaluate with: deeplabcut.evaluate_network(CONFIG_PATH, shuffle={shuffle_num})")
 
 
+# =============================================================================
+# PHASE 3 — New shuffle from SA init with all data
+# =============================================================================
+def new_shuffle():
+    """Create the next shuffle number and train from SA pretrained weights (no resume)."""
+    import deeplabcut
+
+    register_all_labeled_data()
+    filter_missing_images()
+
+    shuffle_num = _next_shuffle_num()
+    print(f"Creating shuffle {shuffle_num} (hrnet_w32, SA init, all data)...")
+    deeplabcut.create_training_dataset(
+        CONFIG_PATH,
+        net_type="hrnet_w32",
+        Shuffles=[shuffle_num],
+        userfeedback=False,
+    )
+
+    print(f"Training shuffle {shuffle_num} from SA pretrained weights...")
+    deeplabcut.train_network(
+        CONFIG_PATH,
+        shuffle=shuffle_num,
+        displayiters=100,
+        epochs=200,
+        gputouse=0,
+    )
+    print(f"\n=== New shuffle {shuffle_num} done ===")
+    print(f"Evaluate with: deeplabcut.evaluate_network(CONFIG_PATH, shuffle={shuffle_num})")
+
+
 if __name__ == "__main__":
     import sys
     cmd = sys.argv[1] if len(sys.argv) > 1 else ""
@@ -482,10 +524,13 @@ if __name__ == "__main__":
         train()
     elif cmd == "extract":
         extract_new_videos()
+    elif cmd == "new_shuffle":
+        new_shuffle()
     else:
         print("Usage:")
-        print("  python detection_trainer.py create   — Phase 1a: create project + extract frames")
-        print("  python detection_trainer.py import   — Phase 1b: import DLC_Horse labels")
-        print("  python detection_trainer.py extract  — Phase 1c: add + extract new videos")
-        print("  python detection_trainer.py dataset  — Phase 2a: create training dataset")
-        print("  python detection_trainer.py train    — Phase 2b: train / resume")
+        print("  python detection_trainer.py create      — Phase 1a: create project + extract frames")
+        print("  python detection_trainer.py import      — Phase 1b: import DLC_Horse labels")
+        print("  python detection_trainer.py extract     — Phase 1c: add + extract new videos")
+        print("  python detection_trainer.py dataset     — Phase 2a: create training dataset (shuffle 9)")
+        print("  python detection_trainer.py train       — Phase 2b: train / resume shuffle 9")
+        print("  python detection_trainer.py new_shuffle — Phase 3:  new shuffle from SA init, all data")

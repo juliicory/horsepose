@@ -21,12 +21,36 @@ from deeplabcut.pose_estimation_pytorch.apis import (
 )
 from visual_constants import (
     VIDEO_TRANSFORMS, KP_RADIUS, TEXT_SCALE, LINE_THICKNESS,
-    INFERENCE_INTERVAL, DETECTOR_THRESHOLD, POSE_THRESHOLD, get_limb_color,
+    INFERENCE_INTERVAL, DETECTOR_THRESHOLD, POSE_THRESHOLD,
     SHOW_BBOX, BBOX_COLOR,
+    SHOW_SA_BODY, SHOW_SA_THAIS, SHOW_SA_KNEES, SHOW_SA_PAWS,
+    SHOW_SA_FETLOCKS, SHOW_SA_SKELETON,
+    SA_COLOR_TOGGLE,
+    _MAGENTA, _ORANGE, _CYAN, _NEON_BLUE, _GREEN,
 )
 
-# SA keypoint substrings to display (case-insensitive match against full name)
-DISPLAY_PARTS = ("nose", "throat", "withers", "tailbase", "thai", "knee", "paw")
+def _limb_color(name, toggle):
+    if not toggle:
+        return _GREEN
+    n = name.lower()
+    if "front_left"  in n: return _MAGENTA
+    if "front_right" in n: return _ORANGE
+    if "back_left"   in n: return _CYAN
+    if "back_right"  in n: return _NEON_BLUE
+    return _GREEN
+
+
+def _sa_visible(name, state=None):
+    n = name.lower()
+    if state is not None:
+        if "thai" in n: return state.show_sa_thais
+        if "knee" in n: return state.show_sa_knees
+        if "paw"  in n: return state.show_sa_paws
+        return state.show_sa_body
+    if "thai" in n: return SHOW_SA_THAIS
+    if "knee" in n: return SHOW_SA_KNEES
+    if "paw"  in n: return SHOW_SA_PAWS
+    return SHOW_SA_BODY  # nose, throat_base, back_base, back_end, tail_base
 
 SKELETON = [
     # Body outline
@@ -50,7 +74,83 @@ SKELETON = [
     ("back_right_knee",   "back_right_paw"),
 ]
 
+# Skeleton with fetlock points inserted between knee and paw
+SKELETON_WITH_FETLOCKS = [
+    ("nose",                   "throat_base"),
+    ("throat_base",            "back_base"),
+    ("back_base",              "back_end"),
+    ("back_end",               "tail_base"),
+    ("back_base",              "front_left_thai"),
+    ("front_left_thai",        "front_left_knee"),
+    ("front_left_knee",        "front_left_fetlock"),
+    ("front_left_fetlock",     "front_left_paw"),
+    ("back_base",              "front_right_thai"),
+    ("front_right_thai",       "front_right_knee"),
+    ("front_right_knee",       "front_right_fetlock"),
+    ("front_right_fetlock",    "front_right_paw"),
+    ("back_end",               "back_left_thai"),
+    ("back_left_thai",         "back_left_knee"),
+    ("back_left_knee",         "back_left_fetlock"),
+    ("back_left_fetlock",      "back_left_paw"),
+    ("back_end",               "back_right_thai"),
+    ("back_right_thai",        "back_right_knee"),
+    ("back_right_knee",        "back_right_fetlock"),
+    ("back_right_fetlock",     "back_right_paw"),
+]
+
+# Maps custom joint model fetlock names → artificial SA-style pos-dict keys
+_FETLOCK_SA_KEY = {
+    "l_front_fetlock": "front_left_fetlock",
+    "r_front_fetlock": "front_right_fetlock",
+    "l_hind_fetlock":  "back_left_fetlock",
+    "r_hind_fetlock":  "back_right_fetlock",
+}
+
+# SA leg chains top→bottom: knee → (fetlock) → paw
+_SA_LEG_CHAINS = [
+    ("front_left_knee",  "front_left_fetlock",  "front_left_paw"),
+    ("front_right_knee", "front_right_fetlock",  "front_right_paw"),
+    ("back_left_knee",   "back_left_fetlock",    "back_left_paw"),
+    ("back_right_knee",  "back_right_fetlock",   "back_right_paw"),
+]
+
+
+def _apply_vertical_constraint(pos, *keys):
+    """For 3-key chains (knee, fetlock, paw) where all three are present:
+    clamp the fetlock y to the 1/4–1/3 span between knee and paw.
+    Falls back to simple monotone ordering otherwise."""
+    if len(keys) == 3:
+        top_k, mid_k, bot_k = keys
+        if top_k in pos and bot_k in pos and mid_k in pos:
+            top_y = pos[top_k][1]
+            bot_y = pos[bot_k][1]
+            span  = bot_y - top_y
+            if span > 0:
+                lo = top_y + span * 0.75
+                hi = top_y + span / 5.0
+                mx, my = pos[mid_k]
+                pos[mid_k] = (mx, int(round(max(lo, min(hi, float(my))))))
+                return
+            # span <= 0: fall through to simple ordering
+
+    prev_y = None
+    for key in keys:
+        if key not in pos:
+            continue
+        x, y = pos[key]
+        if prev_y is not None and y < prev_y:
+            pos[key] = (x, prev_y)
+        else:
+            prev_y = y
+
 # --- OPTICAL FLOW ---
+def reset_optical_flow():
+    global _prev_gray, _of_points, _of_meta
+    _prev_gray = None
+    _of_points = None
+    _of_meta   = []
+
+
 LK_PARAMS = dict(
     winSize=(21, 21),
     maxLevel=3,
@@ -193,29 +293,72 @@ def run_inference(frame, pose_runner, detector_runner, bodyparts, score_threshol
     return _parse_poses(poses, bodyparts, score_threshold), bboxes
 
 
-def draw_horses(frame, horses):
-    for horse in horses:
-        visible = [kp for kp in horse if any(p in kp["name"].lower() for p in DISPLAY_PARTS)]
+def draw_horses(frame, horses, state=None, joint_horses=None):
+    _color        = state.sa_color_toggle  if state else SA_COLOR_TOGGLE
+    _skel         = state.show_sa_skeleton if state else SHOW_SA_SKELETON
+    _show_fetlock = (state.show_sa_fetlocks if state else SHOW_SA_FETLOCKS)
+    _kp_r         = state.kp_radius        if state else KP_RADIUS
+    _txt          = state.text_scale       if state else TEXT_SCALE
+    _thick        = state.line_thickness   if state else LINE_THICKNESS
+    skeleton      = SKELETON_WITH_FETLOCKS if _show_fetlock else SKELETON
+
+    for horse_idx, horse in enumerate(horses):
+        visible = [kp for kp in horse if _sa_visible(kp["name"], state)]
         pos = {kp["name"].lower(): (int(kp["x"]), int(kp["y"])) for kp in visible}
-        for a, b in SKELETON:
-            pa = pos.get(a.lower())
-            pb = pos.get(b.lower())
-            if pa and pb:
-                cv2.line(frame, pa, pb, get_limb_color(a), LINE_THICKNESS, cv2.LINE_AA)
+
+        # Inject fetlock positions from the custom joint model into the SA pos dict
+        if _show_fetlock and joint_horses and horse_idx < len(joint_horses):
+            for kp in joint_horses[horse_idx]:
+                if not kp.get("certain", True):
+                    continue
+                sa_key = _FETLOCK_SA_KEY.get(kp["name"])
+                if sa_key:
+                    pos[sa_key] = (int(kp["x"]), int(kp["y"]))
+
+        # Enforce knee ≥ fetlock ≥ paw in vertical position
+        for chain in _SA_LEG_CHAINS:
+            _apply_vertical_constraint(pos, *chain)
+
+        # Draw injected fetlock dots after constraint
+        if _show_fetlock and joint_horses and horse_idx < len(joint_horses):
+            for kp in joint_horses[horse_idx]:
+                sa_key = _FETLOCK_SA_KEY.get(kp["name"])
+                if sa_key and sa_key in pos:
+                    cx, cy = pos[sa_key]
+                    color  = _limb_color(sa_key, _color)
+                    cv2.circle(frame, (cx, cy), _kp_r, color, -1)
+                    cv2.putText(frame, kp["name"], (cx + 6, cy - 4),
+                                cv2.FONT_HERSHEY_SIMPLEX, _txt, color, 1, cv2.LINE_AA)
+
+        if _skel:
+            for a, b in skeleton:
+                pa = pos.get(a.lower())
+                pb = pos.get(b.lower())
+                if pa and pb:
+                    cv2.line(frame, pa, pb, _limb_color(a, _color), _thick, cv2.LINE_AA)
         for kp in visible:
             cx, cy = int(kp["x"]), int(kp["y"])
-            color = get_limb_color(kp["name"])
-            cv2.circle(frame, (cx, cy), KP_RADIUS, color, -1)
+            color = _limb_color(kp["name"], _color)
+            cv2.circle(frame, (cx, cy), _kp_r, color, -1)
             cv2.putText(frame, kp["name"], (cx + 6, cy - 4),
-                        cv2.FONT_HERSHEY_SIMPLEX, TEXT_SCALE, color, 1, cv2.LINE_AA)
+                        cv2.FONT_HERSHEY_SIMPLEX, _txt, color, 1, cv2.LINE_AA)
 
 
 VIDEOS = [
-    "ref_vids/trot_side.mp4",        # 0
-    "ref_vids/canter_slomo.mp4",     # 1
-    "ref_vids/canter_graham.mov",    # 2
-    "ref_vids/short_trot_Ben.MOV",   # 3
-    "ref_vids/walk_highres.mp4",     # 4
+    "ref_vids/trot_side.mp4",                                               # 0
+    "ref_vids/canter_slomo.mp4",                                            # 1
+    "ref_vids/canter_graham.mov",                                           # 2
+    "ref_vids/short_trot_Ben.MOV",                                          # 3
+    "ref_vids/walk_highres.mp4",                                            # 4
+    "horse_joints-julic-2026-04-29/videos/austin_trot_left.MOV",           # 5
+    "horse_joints-julic-2026-04-29/videos/ben_canter.MOV",                 # 6
+    "horse_joints-julic-2026-04-29/videos/blue_canter.mov",                # 7
+    "horse_joints-julic-2026-04-29/videos/blue_canter_trot.mov",           # 8
+    "horse_joints-julic-2026-04-29/videos/horse_vid1.mp4",                 # 9
+    "horse_joints-julic-2026-04-29/videos/horse_vid2.mp4",                 # 10
+    "horse_joints-julic-2026-04-29/videos/horse_vid3.mp4",                 # 11
+    "horse_joints-julic-2026-04-29/videos/horse_vid4.mp4",                 # 12
+    "horse_joints-julic-2026-04-29/videos/horse_vid5.mp4",                 # 13
 ]
 
 
